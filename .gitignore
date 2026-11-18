@@ -1,0 +1,10 @@
+# Ignore Passwords
+.env
+
+# Ignore Database and Application Volumes
+mysql_data/
+openemr_data/
+keycloak_data/
+
+# Ignore log files
+*.log

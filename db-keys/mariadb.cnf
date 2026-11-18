@@ -1,0 +1,5 @@
+[mariadb]
+plugin_load_add = file_key_management
+file_key_management_filename = /db-keys/keyfile.txt
+innodb_encrypt_tables = FORCE
+innodb_encrypt_log = ON

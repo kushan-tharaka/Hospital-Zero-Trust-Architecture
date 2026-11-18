@@ -1,0 +1,83 @@
+version: '3.1'
+services:
+  mysql:
+    image: mariadb:10.11
+    command: ['--character-set-server=utf8mb4', '--collation-server=utf8mb4_general_ci']
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+    volumes:
+      - database-data:/var/lib/mysql
+      - ./db-keys:/db-keys
+      - ./db-keys/mariadb.cnf:/etc/mysql/conf.d/mariadb.cnf
+  openemr:
+    image: openemr/openemr:latest
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_ROOT_PASS: rootpassword
+      MYSQL_USER: openemr
+      MYSQL_PASS: openemrpassword
+      OE_USER: admin
+      OE_PASS: pass
+    depends_on:
+      - mysql
+    volumes:
+      - site-data:/var/www/localhost/htdocs/openemr/sites
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    command: start-dev
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    ports:
+      - "8080:8080"
+    volumes:
+      - keycloak-data:/opt/keycloak/data
+
+  proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.4.0
+    ports:
+      - "80:4180"
+      - "443:443"
+    volumes:
+      - ./certs:/certs
+    command:
+      - --http-address=0.0.0.0:4180
+      - --https-address=0.0.0.0:443
+      - --tls-cert-file=/certs/hospital.crt
+      - --tls-key-file=/certs/hospital.key
+    environment:
+      OAUTH2_PROXY_PROVIDER: oidc
+      OAUTH2_PROXY_CLIENT_ID: openemr-client
+      OAUTH2_PROXY_CLIENT_SECRET: "KYJrmOmwXOmeU7p34O0tDmISdJoGGb5JBbvjb6AZldnEAuguvGoIM3yQjTxZaXOLYJcQVIbZyGcmSITrJ3jiKK"
+      OAUTH2_PROXY_OIDC_ISSUER_URL: "http://hospital.local:8080/realms/hospital_realm"
+      OAUTH2_PROXY_UPSTREAMS: "http://waf:8080"
+      OAUTH2_PROXY_EMAIL_DOMAINS: "*"
+      OAUTH2_PROXY_HTTP_ADDRESS: "0.0.0.0:4180"
+      OAUTH2_PROXY_COOKIE_SECRET: "c2VjcmV0Y29va2llc2VjcmV0MTIzNDU2Nzg5MDEyMzQ="
+      OAUTH2_PROXY_COOKIE_SECURE: "true"
+      OAUTH2_PROXY_REDIRECT_URL: "https://hospital.local/oauth2/callback"
+      OAUTH2_PROXY_INSECURE_OIDC_ALLOW_UNVERIFIED_EMAIL: "true"
+      OAUTH2_PROXY_ALLOWED_GROUPS: "doctor,nurse,hospital_admin"
+      OAUTH2_PROXY_OIDC_GROUPS_CLAIM: "groups"
+    extra_hosts:
+      - "hospital.local:host-gateway"
+    depends_on:
+      - openemr
+      - keycloak
+
+  waf:
+    image: owasp/modsecurity-crs:nginx
+    environment:
+      - BACKEND=http://openemr:80
+    depends_on:
+      - openemr
+    volumes:
+      - ./waf-logs:/var/log/nginx
+      - ./waf-bypass.conf:/etc/modsecurity.d/owasp-crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf
+      - ./real-ip.conf:/etc/nginx/conf.d/real-ip.conf
+volumes:
+  database-data:
+  site-data:
+  keycloak-data:
+
